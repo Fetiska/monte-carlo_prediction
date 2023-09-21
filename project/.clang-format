@@ -1,0 +1,21 @@
+BasedOnStyle: Google
+
+BreakBeforeBraces: Attach
+
+#indent
+
+#tab
+UseTab: Always
+IndentWidth: 3
+TabWidth: 3
+
+AccessModifierOffset: -1
+
+#max characters per line
+ColumnLimit: 0
+
+#comments
+SpacesBeforeTrailingComments: 0
+SpacesInLineCommentPrefix:
+ Minimum: 0
+ Maximum: 0
