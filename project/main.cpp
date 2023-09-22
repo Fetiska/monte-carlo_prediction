@@ -1,18 +1,20 @@
 #include <iostream>
 #include <cstdint>
 
-std::uint_fast16_t currentState{0};
-std::uint_fast16_t x{4};
+using fastUint = std::uint_fast16_t;
 
-std::uint_fast16_t currentX() { return currentState % x; }
+fastUint currentState{0};
+fastUint x{4};
+
+fastUint currentX() { return currentState % x; }
 
 int main() {
-	std::uint_fast16_t step{0};
-	std::uint_fast16_t y{4};
+	fastUint step{0};
+	fastUint y{4};
 	bool goalAchieved{false};
 
-	std::uint_fast16_t goal{static_cast<std::uint_fast16_t>(x * y - 1)};
-	std::uint_fast16_t maxX{static_cast<std::uint_fast16_t>(x - 1)};
+	fastUint goal{static_cast<fastUint>(x * y - 1)};
+	fastUint maxX{static_cast<fastUint>(x - 1)};
 
 	while (!goalAchieved) {
 		//current x = current position % x size
@@ -38,7 +40,7 @@ int main() {
 				if (currentX() < maxX) ++currentState;
 				break;
 			case action::down: {
-				std::uint_fast16_t nextState{static_cast<std::uint_fast16_t>(currentState + x)};
+				fastUint nextState{static_cast<fastUint>(currentState + x)};
 				if (nextState < goal) currentState = nextState;
 				break;
 			}
@@ -46,7 +48,9 @@ int main() {
 				if (currentX() % x > 0) --currentState;
 				break;
 			case action::up: {
-				std::int_fast16_t nextState{static_cast<std::int_fast16_t>(currentState) - static_cast<std::int_fast16_t>(x)};
+				using fastInt = std::int_fast16_t;
+
+				fastInt nextState{static_cast<fastInt>(currentState) - static_cast<fastInt>(x)};
 				if (nextState >= 0) currentState = nextState;
 				break;
 			}
