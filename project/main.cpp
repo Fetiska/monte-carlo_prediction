@@ -1,5 +1,6 @@
-#include <iostream>
 #include <cstdint>
+#include <iostream>
+#include <random>
 
 using fastUint = std::uint_fast16_t;
 
@@ -13,8 +14,11 @@ int main() {
 	fastUint y{4};
 	bool goalAchieved{false};
 
-	fastUint goal{static_cast<fastUint>(x * y - 1)};
-	fastUint maxX{static_cast<fastUint>(x - 1)};
+	fastUint goal{x * y - 1};
+	fastUint maxX{x - 1};
+
+	std::mt19937 generator{std::random_device{}()};
+	std::uniform_int_distribution actionsDistribution{0, 3};;
 
 	while (!goalAchieved) {
 		//current x = current position % x size
@@ -26,30 +30,29 @@ int main() {
 			continue;
 		}
 
-		enum class action {
+		enum class Action : fastUint {
 			right,
 			down,
 			left,
 			up
 		};
 
-		action action{action::up};
+		Action action{static_cast<Action>(actionsDistribution(generator))};
 
 		switch (action) {
-			case action::right:
+			case Action::right:
 				if (currentX() < maxX) ++currentState;
 				break;
-			case action::down: {
-				fastUint nextState{static_cast<fastUint>(currentState + x)};
+			case Action::down: {
+				fastUint nextState{currentState + x};
 				if (nextState < goal) currentState = nextState;
 				break;
 			}
-			case action::left:
+			case Action::left:
 				if (currentX() % x > 0) --currentState;
 				break;
-			case action::up: {
+			case Action::up: {
 				using fastInt = std::int_fast16_t;
-
 				fastInt nextState{static_cast<fastInt>(currentState) - static_cast<fastInt>(x)};
 				if (nextState >= 0) currentState = nextState;
 				break;
