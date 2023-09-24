@@ -2,8 +2,6 @@ BasedOnStyle: Google
 
 BreakBeforeBraces: Attach
 
-#indent
-
 #tab
 UseTab: Always
 IndentWidth: 3
@@ -16,6 +14,9 @@ ColumnLimit: 0
 
 #comments
 SpacesBeforeTrailingComments: 0
+AlignTrailingComments: false
 SpacesInLineCommentPrefix:
  Minimum: 0
  Maximum: 0
+
+AllowShortCaseLabelsOnASingleLine: true
