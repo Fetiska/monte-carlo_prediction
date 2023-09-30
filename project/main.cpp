@@ -1,5 +1,6 @@
 #include <array>
 #include <cstdint>
+#include <iomanip>
 #include <iostream>
 #include <random>
 #include <vector>
@@ -7,8 +8,8 @@
 using fastUint = std::uint_fast16_t;
 using fastInt = std::int_fast16_t;
 
-constexpr fastUint x{4};
-constexpr fastUint y{4};
+constexpr fastUint x{5};
+constexpr fastUint y{8};
 
 constexpr fastUint maxX{x - 1};
 constexpr fastUint statesNum{x * y};
@@ -40,7 +41,6 @@ void tryUpdateNextStateAndMaxValue(const float newNextState, float& maxValue, fa
 
 	//random state
 	if (updateNextStateIfNewMaxValueNotHigher(newMaxValue, maxValue)) nextState = newNextState;
-	;
 }
 
 fastUint getDownState(const fastUint currentState) { return currentState + x; }
@@ -63,10 +63,15 @@ void trySetNextStateToDownOrUp(const fastUint currentState, float& maxValue, fas
 		fastInt upState{getUpState(currentState)};
 		if (canMoveUp(upState)) {
 			float newMaxValue{values[upState]};
-
 			if (newMaxValue > maxValue || updateNextStateIfNewMaxValueNotHigher(newMaxValue, maxValue)) nextState = upState;
 		}
 	}
+}
+
+void updateValue(float& Return, const std::vector<fastUint>& states, const fastUint step) {
+	Return = -1.f + .999999f * Return;//factor: discount factor
+	float& value{values[states[step]]};
+	value += .1f * (Return - value);//factor: learning rate
 }
 
 int main() {
@@ -79,9 +84,6 @@ int main() {
 
 	//episodes
 	{
-		std::vector<fastUint> states{};
-		std::vector<fastInt> rewards{};
-
 		/*
 		//1st episode
 		{
@@ -102,8 +104,10 @@ int main() {
 		*/
 
 		//next episodes
-		for (fastUint episode{0}; episode < 9; ++episode) {
+		for (fastUint episode{0}; episode < 300; ++episode) {
 			std::cout << 'e' << episode << '\n';
+
+			std::vector<fastUint> states{};
 
 			//episode
 			{
@@ -116,7 +120,6 @@ int main() {
 					std::cout << step << ' ' << currentState % x << ' ' << currentState / x << '\n';
 
 					states.push_back(currentState);
-					rewards.push_back(-1);
 					fastUint currentX{currentState % x};
 
 					//action
@@ -180,17 +183,17 @@ int main() {
 				}
 			}
 
-			float Return{.0f};
-			for (fastUint step{0}; step < states.size(); ++step) {
-				Return = rewards[step] + .999999f * Return;//factor: discount factor
-				float& value{values[states[step]]};
-				value += .1f * (Return - value);//factor: learning rate
+			//update values
+			{
+				float Return{.0f};
+				for (fastUint step{static_cast<fastUint>(states.size() - 1)}; step > 0; --step) updateValue(Return, states, step);
+				updateValue(Return, states, 0);
 			}
 
 			fastUint state{0};
 			for (fastUint yi{0}; yi < y; ++yi) {
 				for (fastUint xi{0}; xi < x; ++xi) {
-					std::cout << values[state] << ' ';
+					std::cout << std::setw(8) << values[state] << '|';
 					++state;
 				}
 				std::cout << '\n';
