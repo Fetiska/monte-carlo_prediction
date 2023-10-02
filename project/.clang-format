@@ -19,4 +19,7 @@ SpacesInLineCommentPrefix:
  Minimum: 0
  Maximum: 0
 
+#single line
 AllowShortCaseLabelsOnASingleLine: true
+AllowShortFunctionsOnASingleLine: All
+AllowShortIfStatementsOnASingleLine: AllIfsAndElse

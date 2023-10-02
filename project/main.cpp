@@ -3,6 +3,7 @@
 #include <iomanip>
 #include <iostream>
 #include <random>
+#include <type_traits>
 #include <vector>
 
 using fastUint = std::uint_fast16_t;
@@ -11,60 +12,73 @@ using fastInt = std::int_fast16_t;
 constexpr fastUint x{5};
 constexpr fastUint y{8};
 
+static_assert(x > 1 && y > 1);//why: more optimized random action calculation when x and y > 1
+
 constexpr fastUint maxX{x - 1};
 constexpr fastUint statesNum{x * y};
 constexpr fastUint goal{statesNum - 1};
 std::array<float, statesNum> values{};
 std::mt19937 generator{std::random_device{}()};
 
-consteval fastUint calculateBoundary(fastUint probabilityReciprocal) { return generator.max() / probabilityReciprocal; }
+consteval fastUint calculateBoundary(const fastUint probabilityReciprocal) { return generator.max() / probabilityReciprocal; }
 
 constexpr fastUint evenBoundary{calculateBoundary(2)};
-constexpr fastUint randomActionBoundary{calculateBoundary(4)};
+constexpr fastUint randomActionBoundary{calculateBoundary(3)};
 
-bool canMoveRight(const fastUint currentX) { return currentX < maxX; }
+bool randomBool(const unsigned boundary) { return generator() < boundary; }//true probability = boundary / generator.max()
+bool randomEvenBool() { return randomBool(evenBoundary); }
 
-bool canMoveLeft(const fastUint currentX) { return currentX > 0; }
+bool updateCurrentStateIfNewMaxValueNotHigher(const float newMaxValue, const float maxValue) { return newMaxValue == maxValue && randomEvenBool(); }
 
-bool randomBool(const unsigned boundary) { return generator() < boundary; }//probability = boundary / generator.max()
-
-bool updateNextStateIfNewMaxValueNotHigher(const float newMaxValue, const float maxValue) { return newMaxValue == maxValue && randomBool(evenBoundary); }
-
-void tryUpdateNextStateAndMaxValue(const float newNextState, float& maxValue, fastUint& nextState) {
-	float newMaxValue{values[newNextState]};
+void tryUpdateCurrentStateAndMaxValue(const float newState, float& maxValue, fastUint& currentState) {
+	float newMaxValue{values[newState]};
 
 	if (newMaxValue > maxValue) {
-		nextState = newNextState;
+		currentState = newState;
 		maxValue = newMaxValue;
 		return;
 	}
 
-	//random state
-	if (updateNextStateIfNewMaxValueNotHigher(newMaxValue, maxValue)) nextState = newNextState;
+	//random
+	if (updateCurrentStateIfNewMaxValueNotHigher(newMaxValue, maxValue)) currentState = newState;
 }
-
-fastUint getDownState(const fastUint currentState) { return currentState + x; }
-bool canMoveDown(const fastUint downState) { return downState < goal; }
-
-fastInt getUpState(const fastInt currentState) { return currentState - static_cast<fastInt>(x); }
-bool canMoveUp(const fastInt upState) { return upState > -1; }
 
 fastUint getLeftState(const fastUint currentState) { return currentState - 1; }
 
-void trySetNextStateToDownOrUp(const fastUint currentState, float& maxValue, fastUint& nextState) {
-	//down
-	{
-		fastUint downState{getDownState(currentState)};
-		if (canMoveDown(downState)) tryUpdateNextStateAndMaxValue(downState, maxValue, nextState);
-	}
+template <typename TryMoveDown, typename TryMoveUp>
+	requires std::invocable<TryMoveDown, fastUint&, fastUint> && std::invocable<TryMoveUp, fastUint&, fastInt>
+void tryMoveDownAndUp(const fastUint previousState, fastUint& currentState, TryMoveDown&& tryMoveDown, TryMoveUp&& tryMoveUp) {
+	fastUint downState{previousState + x};
+	fastInt upState(previousState - static_cast<fastInt>(x));
 
-	//up
-	{
-		fastInt upState{getUpState(currentState)};
-		if (canMoveUp(upState)) {
-			float newMaxValue{values[upState]};
-			if (newMaxValue > maxValue || updateNextStateIfNewMaxValueNotHigher(newMaxValue, maxValue)) nextState = upState;
-		}
+	//can move down
+	if (downState < goal) {
+		tryMoveDown(currentState, downState);
+		if (upState > -1) tryMoveUp(currentState, upState);
+	} else tryMoveUp(currentState, upState);
+}
+
+void tryMoveRandomly(fastUint& currentState, const fastInt newState) {
+	if (randomEvenBool()) currentState = newState;
+}
+
+template <typename TryMoveLeft, typename TryMoveDown, typename TryMoveUp>
+	requires std::invocable<TryMoveLeft, fastUint&, fastUint> && std::invocable<TryMoveDown, fastUint&, fastUint> && std::invocable<TryMoveUp, fastUint&, fastInt>
+void takeAction(const fastUint currentX, fastUint& currentState, TryMoveLeft&& tryMoveLeft, TryMoveDown&& tryMoveDown, TryMoveUp&& tryMoveUp) {
+	//can move right
+	if (currentX < maxX) {
+		fastUint previousState{currentState};
+		++currentState;
+
+		//can move left
+		if (currentX > 0) tryMoveLeft(currentState, previousState);
+
+		tryMoveDownAndUp(previousState, currentState, tryMoveDown, tryMoveUp);
+	} else {
+		fastUint previousState{currentState};
+		--currentState;
+
+		tryMoveDownAndUp(previousState, currentState, tryMoveDown, tryMoveUp);
 	}
 }
 
@@ -75,13 +89,6 @@ void updateValue(float& Return, const std::vector<fastUint>& states, const fastU
 }
 
 int main() {
-	enum class Action : fastUint {
-		right,
-		down,
-		left,
-		up
-	};
-
 	//episodes
 	{
 		/*
@@ -127,55 +134,28 @@ int main() {
 						if (randomBool(randomActionBoundary)) {
 							std::cout << "rand\n";
 
-							std::vector<Action> possibleActions{};
-
-							if (canMoveRight(currentX)) possibleActions.push_back(Action::right);
-							if (canMoveLeft(currentX)) possibleActions.push_back(Action::left);
-
-							fastUint downState{getDownState(currentState)};
-							if (canMoveDown(downState)) possibleActions.push_back(Action::down);
-
-							fastInt UpState(getUpState(currentState));
-							if (canMoveUp(UpState)) possibleActions.push_back(Action::up);
-
-							Action action{possibleActions[std::uniform_int_distribution<size_t>{0, possibleActions.size() - 1}(generator)]};
-
-							switch (action) {
-								case Action::right:
-									++currentState;
-									break;
-								case Action::left:
-									--currentState;
-									break;
-								case Action::down:
-									currentState = downState;
-									break;
-								case Action::up: currentState = UpState;
-							}
+							takeAction(
+								 currentX,
+								 currentState,
+								 [](fastUint& currentState, fastUint previousState) { tryMoveRandomly(currentState, getLeftState(previousState)); },
+								 [](fastUint& currentState, fastUint downState) { tryMoveRandomly(currentState, downState); },
+								 [](fastUint& currentState, fastUint upState) {
+									 tryMoveRandomly(currentState, upState);
+								 });
 						} else {//greedy
 							std::cout << "greedy\n";
-							fastUint nextState;
 
-							//set next state
-							{
-								if (canMoveRight(currentX)) {
-									//right
-									nextState = currentState + 1;
-									float maxValue{values[nextState]};
+							float maxValue{values[currentState]};
 
-									if (canMoveLeft(currentX)) tryUpdateNextStateAndMaxValue(getLeftState(currentState), maxValue, nextState);
-
-									trySetNextStateToDownOrUp(currentState, maxValue, nextState);
-								} else {
-									//left
-									nextState = getLeftState(currentState);
-									float maxValue{values[nextState]};
-
-									trySetNextStateToDownOrUp(currentState, maxValue, nextState);
-								}
-							}
-
-							currentState = nextState;
+							takeAction(
+								 currentX,
+								 currentState,
+								 [&maxValue](fastUint& currentState, const fastUint previousState) { tryUpdateCurrentStateAndMaxValue(getLeftState(previousState), maxValue, currentState); },
+								 [&maxValue](fastUint& currentState, const fastUint downState) { tryUpdateCurrentStateAndMaxValue(downState, maxValue, currentState); },
+								 [&maxValue](fastUint& currentState, const fastUint upState) {
+									 float newMaxValue{values[upState]};
+									 if (newMaxValue > maxValue || updateCurrentStateIfNewMaxValueNotHigher(newMaxValue, maxValue)) currentState = upState;
+								 });
 						}
 					}
 
