@@ -28,8 +28,10 @@ constexpr fastUint randomActionBoundary{calculateBoundary(3)};
 bool randomBool(const unsigned boundary) { return generator() < boundary; }//true probability = boundary / generator.max()
 bool randomEvenBool() { return randomBool(evenBoundary); }
 
-template <typename Random, typename Greedy>
-	requires std::is_invocable<Random, fastUint&>::value && std::is_invocable<Greedy, fastUint&>::value
+template <typename invocable>
+concept invocableWithCurrentState = std::invocable<invocable, fastUint&>;
+
+template <invocableWithCurrentState Random, invocableWithCurrentState Greedy>
 void choosePolicyAndTakeAction(fastUint& currentState, Random&& random, Greedy&& greedy) {
 	if (randomBool(randomActionBoundary)) {
 		std::cout << "rand\n";
@@ -44,28 +46,19 @@ void choosePolicyAndTakeAction(fastUint& currentState, Random&& random, Greedy&&
 
 void moveDown(fastUint& currentState) { currentState += x; }
 
-bool updateCurrentStateIfNewMaxValueNotHigher(const float newMaxValue, const float maxValue) { return newMaxValue == maxValue && randomEvenBool(); }
-
-void tryUpdateCurrentStateAndMaxValue(const float newState, float& maxValue, fastUint& currentState) {
-	float newMaxValue{values[newState]};
-
-	if (newMaxValue > maxValue) {
-		currentState = newState;
-		maxValue = newMaxValue;
-		return;
-	}
-
-	//random
-	if (updateCurrentStateIfNewMaxValueNotHigher(newMaxValue, maxValue)) currentState = newState;
+void randomFirstStep(fastUint& currentState) {
+	//move right
+	if (randomEvenBool()) ++currentState;
+	else moveDown(currentState);
 }
 
 fastUint getLeftState(const fastUint state) { return state - 1; }
 fastUint getDownState(const fastUint state) { return state + x; }
 
-template <typename tryMove>
-concept tryMoveInvocable = std::invocable<tryMove, fastUint&, fastUint>;
+template <typename invocable>
+concept invocableWithCurrentStateAndAnotherFastUint = std::invocable<invocable, fastUint&, fastUint>;
 
-template <tryMoveInvocable TryMoveDown, tryMoveInvocable TryMoveUp>
+template <invocableWithCurrentStateAndAnotherFastUint TryMoveDown, invocableWithCurrentStateAndAnotherFastUint TryMoveUp>
 void tryMoveDownAndUp(const fastUint previousState, fastUint& currentState, TryMoveDown&& tryMoveDown, TryMoveUp&& tryMoveUp) {
 	fastUint downState{getDownState(previousState)};
 	fastInt upState(previousState - static_cast<fastInt>(x));
@@ -77,11 +70,7 @@ void tryMoveDownAndUp(const fastUint previousState, fastUint& currentState, TryM
 	} else tryMoveUp(currentState, upState);
 }
 
-void tryMoveRandomly(fastUint& currentState, const fastInt newState) {
-	if (randomEvenBool()) currentState = newState;
-}
-
-template <tryMoveInvocable TryMoveLeft, tryMoveInvocable TryMoveDown, tryMoveInvocable TryMoveUp>
+template <invocableWithCurrentStateAndAnotherFastUint TryMoveLeft, invocableWithCurrentStateAndAnotherFastUint TryMoveDown, invocableWithCurrentStateAndAnotherFastUint TryMoveUp>
 void takeAction(const fastUint currentX, fastUint& currentState, TryMoveLeft&& tryMoveLeft, TryMoveDown&& tryMoveDown, TryMoveUp&& tryMoveUp) {
 	//can move right
 	if (currentX < maxX) {
@@ -100,113 +89,119 @@ void takeAction(const fastUint currentX, fastUint& currentState, TryMoveLeft&& t
 	}
 }
 
+void tryMoveRandomly(fastUint& currentState, const fastInt newState) {
+	if (randomEvenBool()) currentState = newState;
+}
+
+void randomCommonStep(fastUint& currentState, fastUint currentX) {
+	takeAction(
+		 currentX,
+		 currentState,
+		 [](fastUint& currentState, fastUint previousState) { tryMoveRandomly(currentState, getLeftState(previousState)); },
+		 tryMoveRandomly,
+		 tryMoveRandomly);
+}
+
+bool updateCurrentStateIfNewMaxValueNotHigher(const float newMaxValue, const float maxValue) { return newMaxValue == maxValue && randomEvenBool(); }
+
+void tryUpdateCurrentStateAndMaxValue(const float newState, float& maxValue, fastUint& currentState) {
+	float newMaxValue{values[newState]};
+
+	if (newMaxValue > maxValue) {
+		currentState = newState;
+		maxValue = newMaxValue;
+		return;
+	}
+
+	//random
+	if (updateCurrentStateIfNewMaxValueNotHigher(newMaxValue, maxValue)) currentState = newState;
+}
+
 void updateValue(float& Return, const std::vector<fastUint>& states, const fastUint step) {
 	Return = -1.f + .999999f * Return;//factor: discount factor
 	float& value{values[states[step]]};
 	value += .1f * (Return - value);//factor: learning rate
 }
 
-int main() {
-	//episodes
+template <invocableWithCurrentState FirstStep, invocableWithCurrentStateAndAnotherFastUint CommonStep>
+void executeEpisode(FirstStep firstStep, CommonStep commonStep) {
+	std::vector<fastUint> states{0};
+
+	//execute
 	{
-		/*
-		//1st episode
-		{
-			std::cout << "e1\n";
+		fastUint currentState{0};
 
-			//episode
-			{
-				fastUint currentState{0};
-				fastUint step{0};
+		firstStep(currentState);
 
-				while (currentState != goal) {
-					std::cout << step
-				}
-			}
+		fastUint step{1};
 
-			updateValues(rewards, states);
+		while (currentState != goal) {
+			//current x = current position % x size
+			//current y = current position // x size
+			std::cout << step << ' ' << currentState % x << ' ' << currentState / x << '\n';
+
+			states.push_back(currentState);
+			fastUint currentX{currentState % x};
+
+			commonStep(currentState, currentX);
+
+			++step;
 		}
-		*/
+	}
 
-		//next episodes
-		for (fastUint episode{0}; episode < 300; ++episode) {
-			std::cout << 'e' << episode << '\n';
+	//update values
+	{
+		float Return{.0f};
+		for (fastUint step{static_cast<fastUint>(states.size() - 1)}; step > 0; --step) updateValue(Return, states, step);
+		updateValue(Return, states, 0);
+	}
 
-			std::vector<fastUint> states{0};
-
-			//episode
-			{
-				fastUint currentState{0};
-
-				//1st step: choose only between right and down actions
-				choosePolicyAndTakeAction(
-					 currentState,
-					 [](fastUint& currentState) {
-						 if (randomEvenBool()) ++currentState;
-						 else moveDown(currentState);
-					 },
-					 [](fastUint& currentState) {
-						 //right better than down
-						 if (values[currentState + 1] > values[getDownState(currentState)]) ++currentState;
-						 else moveDown(currentState);
-					 });
-
-				fastUint step{1};
-
-				//next steps
-				while (currentState != goal) {
-					//current x = current position % x size
-					//current y = current position // x size
-					std::cout << step << ' ' << currentState % x << ' ' << currentState / x << '\n';
-
-					states.push_back(currentState);
-					fastUint currentX{currentState % x};
-
-					choosePolicyAndTakeAction(
-						 currentState,
-						 [currentX](fastUint& currentState) {
-							 takeAction(
-								  currentX,
-								  currentState,
-								  [](fastUint& currentState, fastUint previousState) { tryMoveRandomly(currentState, getLeftState(previousState)); },
-								  [](fastUint& currentState, fastUint downState) { tryMoveRandomly(currentState, downState); },
-								  [](fastUint& currentState, fastUint upState) {
-									  tryMoveRandomly(currentState, upState);
-								  });
-						 },
-						 [currentX](fastUint& currentState) {
-							 float maxValue{values[currentState]};
-
-							 takeAction(
-								  currentX,
-								  currentState,
-								  [&maxValue](fastUint& currentState, const fastUint previousState) { tryUpdateCurrentStateAndMaxValue(getLeftState(previousState), maxValue, currentState); },
-								  [&maxValue](fastUint& currentState, const fastUint downState) { tryUpdateCurrentStateAndMaxValue(downState, maxValue, currentState); },
-								  [&maxValue](fastUint& currentState, const fastUint upState) {
-									  float newMaxValue{values[upState]};
-									  if (newMaxValue > maxValue || updateCurrentStateIfNewMaxValueNotHigher(newMaxValue, maxValue)) currentState = upState;
-								  });
-						 });
-
-					++step;
-				}
-			}
-
-			//update values
-			{
-				float Return{.0f};
-				for (fastUint step{static_cast<fastUint>(states.size() - 1)}; step > 0; --step) updateValue(Return, states, step);
-				updateValue(Return, states, 0);
-			}
-
-			fastUint state{0};
-			for (fastUint yi{0}; yi < y; ++yi) {
-				for (fastUint xi{0}; xi < x; ++xi) {
-					std::cout << std::setw(8) << values[state] << '|';
-					++state;
-				}
-				std::cout << '\n';
-			}
+	fastUint state{0};
+	for (fastUint yi{0}; yi < y; ++yi) {
+		for (fastUint xi{0}; xi < x; ++xi) {
+			std::cout << std::setw(8) << values[state] << '|';
+			++state;
 		}
+		std::cout << '\n';
+	}
+}
+
+int main() {
+	//1st episode
+	executeEpisode(randomFirstStep, randomCommonStep);
+
+	//next episodes
+	for (fastUint episode{1}; episode < 300; ++episode) {
+		std::cout << 'e' << episode << '\n';
+
+		executeEpisode(
+			 [](fastUint& currentState) {
+				 choosePolicyAndTakeAction(
+					  currentState,
+					  randomFirstStep,
+					  [](fastUint& currentState) {
+						  //right better than down
+						  if (values[currentState + 1] > values[getDownState(currentState)]) ++currentState;
+						  else moveDown(currentState);
+					  });
+			 },
+			 [](fastUint& currentState, fastUint currentX) {
+				 choosePolicyAndTakeAction(
+					  currentState,
+					  [currentX](fastUint& currentState) { randomCommonStep(currentState, currentX); },
+					  [currentX](fastUint& currentState) {
+						  float maxValue{values[currentState]};
+
+						  takeAction(
+								currentX,
+								currentState,
+								[&maxValue](fastUint& currentState, const fastUint previousState) { tryUpdateCurrentStateAndMaxValue(getLeftState(previousState), maxValue, currentState); },
+								[&maxValue](fastUint& currentState, const fastUint downState) { tryUpdateCurrentStateAndMaxValue(downState, maxValue, currentState); },
+								[&maxValue](fastUint& currentState, const fastUint upState) {
+									float newMaxValue{values[upState]};
+									if (newMaxValue > maxValue || updateCurrentStateIfNewMaxValueNotHigher(newMaxValue, maxValue)) currentState = upState;
+								});
+					  });
+			 });
 	}
 }
