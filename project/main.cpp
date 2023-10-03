@@ -14,16 +14,19 @@ constexpr fastUint y{8};
 
 static_assert(x > 1 && y > 1);//why: more optimized random action calculation when x and y > 1
 
+constexpr fastUint decayEpisodes{150};//number of steps to achieve min probability
+
 constexpr fastUint maxX{x - 1};
 constexpr fastUint statesNum{x * y};
 constexpr fastUint goal{statesNum - 1};
 std::array<float, statesNum> values{};
 std::mt19937 generator{std::random_device{}()};
+const float decayUpdateFactor{pow(0.1f /*min probability*/, 1.f / decayEpisodes)};
+float randomActionProbability{decayUpdateFactor};
 
-consteval fastUint calculateBoundary(const fastUint probabilityReciprocal) { return generator.max() / probabilityReciprocal; }
+constexpr fastUint calculateBoundary(const float probability) { return generator.max() * probability; }
 
-constexpr fastUint evenBoundary{calculateBoundary(2)};
-constexpr fastUint randomActionBoundary{calculateBoundary(3)};
+constexpr fastUint evenBoundary{calculateBoundary(.5f)};
 
 bool randomBool(const unsigned boundary) { return generator() < boundary; }//true probability = boundary / generator.max()
 bool randomEvenBool() { return randomBool(evenBoundary); }
@@ -33,7 +36,7 @@ concept invocableWithCurrentState = std::invocable<invocable, fastUint&>;
 
 template <invocableWithCurrentState Random, invocableWithCurrentState Greedy>
 void choosePolicyAndTakeAction(fastUint& currentState, Random&& random, Greedy&& greedy) {
-	if (randomBool(randomActionBoundary)) {
+	if (randomBool(calculateBoundary(randomActionProbability))) {
 		std::cout << "rand\n";
 
 		random(currentState);
@@ -166,42 +169,59 @@ void executeEpisode(FirstStep firstStep, CommonStep commonStep) {
 	}
 }
 
+void executeNonFirstEpisode() {
+	executeEpisode(
+		 [](fastUint& currentState) {
+			 choosePolicyAndTakeAction(
+				  currentState,
+				  randomFirstStep,
+				  [](fastUint& currentState) {
+					  //right better than down
+					  if (values[currentState + 1] > values[getDownState(currentState)]) ++currentState;
+					  else moveDown(currentState);
+				  });
+		 },
+		 [](fastUint& currentState, fastUint currentX) {
+			 choosePolicyAndTakeAction(
+				  currentState,
+				  [currentX](fastUint& currentState) { randomCommonStep(currentState, currentX); },
+				  [currentX](fastUint& currentState) {
+					  float maxValue{values[currentState]};
+
+					  takeAction(
+							currentX,
+							currentState,
+							[&maxValue](fastUint& currentState, const fastUint previousState) { tryUpdateCurrentStateAndMaxValue(getLeftState(previousState), maxValue, currentState); },
+							[&maxValue](fastUint& currentState, const fastUint downState) { tryUpdateCurrentStateAndMaxValue(downState, maxValue, currentState); },
+							[&maxValue](fastUint& currentState, const fastUint upState) {
+								float newMaxValue{values[upState]};
+								if (newMaxValue > maxValue || updateCurrentStateIfNewMaxValueNotHigher(newMaxValue, maxValue)) currentState = upState;
+							});
+				  });
+		 });
+}
+
 int main() {
 	//1st episode
 	executeEpisode(randomFirstStep, randomCommonStep);
 
-	//next episodes
-	for (fastUint episode{1}; episode < 300; ++episode) {
-		std::cout << 'e' << episode << '\n';
+	//2nd episode. why separate: don't need to update random action probability in 2nd episode
+	executeNonFirstEpisode();
 
-		executeEpisode(
-			 [](fastUint& currentState) {
-				 choosePolicyAndTakeAction(
-					  currentState,
-					  randomFirstStep,
-					  [](fastUint& currentState) {
-						  //right better than down
-						  if (values[currentState + 1] > values[getDownState(currentState)]) ++currentState;
-						  else moveDown(currentState);
-					  });
-			 },
-			 [](fastUint& currentState, fastUint currentX) {
-				 choosePolicyAndTakeAction(
-					  currentState,
-					  [currentX](fastUint& currentState) { randomCommonStep(currentState, currentX); },
-					  [currentX](fastUint& currentState) {
-						  float maxValue{values[currentState]};
+	constexpr fastUint noDecayEpisodes{150};
 
-						  takeAction(
-								currentX,
-								currentState,
-								[&maxValue](fastUint& currentState, const fastUint previousState) { tryUpdateCurrentStateAndMaxValue(getLeftState(previousState), maxValue, currentState); },
-								[&maxValue](fastUint& currentState, const fastUint downState) { tryUpdateCurrentStateAndMaxValue(downState, maxValue, currentState); },
-								[&maxValue](fastUint& currentState, const fastUint upState) {
-									float newMaxValue{values[upState]};
-									if (newMaxValue > maxValue || updateCurrentStateIfNewMaxValueNotHigher(newMaxValue, maxValue)) currentState = upState;
-								});
-					  });
-			 });
+	//episodes with random action probability decay
+	for (fastUint episode{0}; episode < decayEpisodes; ++episode) {
+		randomActionProbability *= decayUpdateFactor;
+		std::cout << 'e' << episode + 2 << ' ' << randomActionProbability << '\n';
+
+		executeNonFirstEpisode();
+	}
+
+	//episodes without random action probability decay
+	for (fastUint episode{0}; episode < noDecayEpisodes; ++episode) {
+		std::cout << 'e' << episode + decayEpisodes << ' ' << randomActionProbability << '\n';
+
+		executeNonFirstEpisode();
 	}
 }
