@@ -9,20 +9,19 @@
 using fastUint = std::uint_fast16_t;
 using fastInt = std::int_fast16_t;
 
-constexpr fastUint x{5};
-constexpr fastUint y{8};
+fastUint xSize;
+fastUint ySize;
+fastUint decayEpisodes;//number of steps to achieve min probability
+float minRandomActionProbability;
+float learningRate;
+float discount;
 
-static_assert(x > 1 && y > 1);//why: more optimized random action calculation when x and y > 1
-
-constexpr fastUint decayEpisodes{150};//number of steps to achieve min probability
-
-constexpr fastUint maxX{x - 1};
-constexpr fastUint statesNum{x * y};
-constexpr fastUint goal{statesNum - 1};
-std::array<float, statesNum> values{};
+fastUint maxX;
+fastUint statesNum;
+fastUint goal;
+std::vector<float> values;
 std::mt19937 generator{std::random_device{}()};
-const float decayUpdateFactor{pow(0.1f /*min probability*/, 1.f / decayEpisodes)};
-float randomActionProbability{decayUpdateFactor};
+float randomActionProbability;
 
 constexpr fastUint calculateBoundary(const float probability) { return generator.max() * probability; }
 
@@ -36,18 +35,11 @@ concept invocableWithCurrentState = std::invocable<invocable, fastUint&>;
 
 template <invocableWithCurrentState Random, invocableWithCurrentState Greedy>
 void choosePolicyAndTakeAction(fastUint& currentState, Random&& random, Greedy&& greedy) {
-	if (randomBool(calculateBoundary(randomActionProbability))) {
-		std::cout << "rand\n";
-
-		random(currentState);
-	} else {
-		std::cout << "greedy\n";
-
-		greedy(currentState);
-	}
+	if (randomBool(calculateBoundary(randomActionProbability))) random(currentState);
+	else greedy(currentState);
 }
 
-void moveDown(fastUint& currentState) { currentState += x; }
+void moveDown(fastUint& currentState) { currentState += xSize; }
 
 void randomFirstStep(fastUint& currentState) {
 	//move right
@@ -56,7 +48,7 @@ void randomFirstStep(fastUint& currentState) {
 }
 
 fastUint getLeftState(const fastUint state) { return state - 1; }
-fastUint getDownState(const fastUint state) { return state + x; }
+fastUint getDownState(const fastUint state) { return state + xSize; }
 
 template <typename invocable>
 concept invocableWithCurrentStateAndAnotherFastUint = std::invocable<invocable, fastUint&, fastUint>;
@@ -64,7 +56,7 @@ concept invocableWithCurrentStateAndAnotherFastUint = std::invocable<invocable, 
 template <invocableWithCurrentStateAndAnotherFastUint TryMoveDown, invocableWithCurrentStateAndAnotherFastUint TryMoveUp>
 void tryMoveDownAndUp(const fastUint previousState, fastUint& currentState, TryMoveDown&& tryMoveDown, TryMoveUp&& tryMoveUp) {
 	fastUint downState{getDownState(previousState)};
-	fastInt upState(previousState - static_cast<fastInt>(x));
+	fastInt upState{static_cast<fastInt>(previousState) - static_cast<fastInt>(xSize)};
 
 	//can move down
 	if (downState < goal) {
@@ -121,9 +113,9 @@ void tryUpdateCurrentStateAndMaxValue(const float newState, float& maxValue, fas
 }
 
 void updateValue(float& Return, const std::vector<fastUint>& states, const fastUint step) {
-	Return = -1.f + .999999f * Return;//factor: discount factor
+	Return = -1.f + discount * Return;
 	float& value{values[states[step]]};
-	value += .1f * (Return - value);//factor: learning rate
+	value += learningRate * (Return - value);
 }
 
 template <invocableWithCurrentState FirstStep, invocableWithCurrentStateAndAnotherFastUint CommonStep>
@@ -139,17 +131,15 @@ void executeEpisode(FirstStep firstStep, CommonStep commonStep) {
 		fastUint step{1};
 
 		while (currentState != goal) {
-			//current x = current position % x size
-			//current y = current position // x size
-			std::cout << step << ' ' << currentState % x << ' ' << currentState / x << '\n';
-
 			states.push_back(currentState);
-			fastUint currentX{currentState % x};
+			fastUint currentX{currentState % xSize};
 
 			commonStep(currentState, currentX);
 
 			++step;
 		}
+
+		std::cout << step << '\n';
 	}
 
 	//update values
@@ -157,15 +147,6 @@ void executeEpisode(FirstStep firstStep, CommonStep commonStep) {
 		float Return{.0f};
 		for (fastUint step{static_cast<fastUint>(states.size() - 1)}; step > 0; --step) updateValue(Return, states, step);
 		updateValue(Return, states, 0);
-	}
-
-	fastUint state{0};
-	for (fastUint yi{0}; yi < y; ++yi) {
-		for (fastUint xi{0}; xi < x; ++xi) {
-			std::cout << std::setw(8) << values[state] << '|';
-			++state;
-		}
-		std::cout << '\n';
 	}
 }
 
@@ -202,26 +183,51 @@ void executeNonFirstEpisode() {
 }
 
 int main() {
+	fastUint episodes;
+
+	std::cin >> xSize >> ySize >> episodes >> learningRate >> discount >> decayEpisodes >> minRandomActionProbability;
+
+	//initialize variables
+	maxX = xSize - 1;
+	statesNum = xSize * ySize;
+	goal = statesNum - 1;
+	values.resize(statesNum, .0f);
+
 	//1st episode
+	std::cout << "1 ";
 	executeEpisode(randomFirstStep, randomCommonStep);
 
+	const float decayUpdateFactor{pow(minRandomActionProbability, 1.f / decayEpisodes)};
+	randomActionProbability = decayUpdateFactor;
+
 	//2nd episode. why separate: don't need to update random action probability in 2nd episode
+	std::cout << "2 ";
 	executeNonFirstEpisode();
 
-	constexpr fastUint noDecayEpisodes{150};
+	const fastUint firstNonDecayEpisode{decayEpisodes + 1};
 
 	//episodes with random action probability decay
-	for (fastUint episode{0}; episode < decayEpisodes; ++episode) {
+	for (fastUint episode{3}; episode < firstNonDecayEpisode; ++episode) {
 		randomActionProbability *= decayUpdateFactor;
-		std::cout << 'e' << episode + 2 << ' ' << randomActionProbability << '\n';
+		std::cout << episode << ' ';
 
 		executeNonFirstEpisode();
 	}
 
 	//episodes without random action probability decay
-	for (fastUint episode{0}; episode < noDecayEpisodes; ++episode) {
-		std::cout << 'e' << episode + decayEpisodes << ' ' << randomActionProbability << '\n';
+	for (fastUint episode{firstNonDecayEpisode}; episode < episodes + 1; ++episode) {
+		std::cout << episode << ' ';
 
 		executeNonFirstEpisode();
+	}
+
+	//print values
+	fastUint state{0};
+	for (fastUint y{0}; y < ySize; ++y) {
+		for (fastUint x{0}; x < xSize; ++x) {
+			std::cout << std::setw(8) << values[state] << '|';
+			++state;
+		}
+		std::cout << '\n';
 	}
 }
