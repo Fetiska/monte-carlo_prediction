@@ -184,8 +184,65 @@ void executeNonFirstEpisode() {
 
 int main() {
 	fastUint episodes;
+	
+	//input
+	while (true) {
+		std::cout << "enter\n x size\n y size\n total number of episodes\n learning rate\n discount factor\n number of episodes with decay of exploration probability\n exploration probability after decay\n";
 
-	std::cin >> xSize >> ySize >> episodes >> learningRate >> discount >> decayEpisodes >> minRandomActionProbability;
+		int xSizeInput, ySizeInput, episodesInput, decayEpisodesInput;
+
+		std::cin >> xSizeInput >> ySizeInput >> episodesInput >> learningRate >> discount >> decayEpisodesInput >> minRandomActionProbability;
+
+		std::cout << '\n';
+
+		bool valid{true};
+
+		if (xSizeInput < 2) {
+			std::cout << "x size must be > 1\n";
+			valid = false;
+		}
+		if (ySizeInput < 2) {
+			std::cout << "y size must be > 1\n";
+			valid = false;
+		}
+		if (episodesInput < 1) {
+			std::cout << "total episodes must be > 0\n";
+			valid = false;
+		}
+		if (learningRate <= .0f) {
+			std::cout << "learning rate must be > 0\n";
+			valid = false;
+		}
+		if (discount < .0f || discount > 1.f) {
+			std::cout << "discount factor must be between 0 and 1\n";
+			valid = false;
+		}
+		if (decayEpisodesInput < 0) {
+			std::cout << "number of episodes with decay of exploration probability be >= 0\n";
+			valid = false;
+		}
+		if (minRandomActionProbability < .0f || minRandomActionProbability > 1.f) {
+			std::cout << "exploration probability after decay must be between 0 and 1\n";
+			valid = false;
+		}
+		if (std::cin.fail()){
+			std::cout << xSizeInput;
+			std::cout << "use valid numbers\n";
+			std::cin.clear();
+			std::cin.ignore();
+			valid = false;
+		}
+
+		if (valid) {
+			xSize = xSizeInput;
+			ySize = ySizeInput;
+			episodes = episodesInput;
+			decayEpisodes = decayEpisodesInput;
+			break;
+		};
+
+		std::cout << '\n';
+	}
 
 	//initialize variables
 	maxX = xSize - 1;
