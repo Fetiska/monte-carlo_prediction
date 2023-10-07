@@ -182,109 +182,118 @@ void executeNonFirstEpisode() {
 		 });
 }
 
+void run() {
+}
+
 int main() {
-	fastUint episodes;
-	
-	//input
-	while (true) {
-		std::cout << "enter\n x size\n y size\n total number of episodes\n learning rate\n discount factor\n number of episodes with decay of exploration probability\n exploration probability after decay\n";
+	do {
+		fastUint episodes;
 
-		int xSizeInput, ySizeInput, episodesInput, decayEpisodesInput;
+		//input
+		while (true) {
+			std::cout << "enter\n x size\n y size\n total number of episodes\n learning rate\n discount factor\n number of episodes with decay of exploration probability\n exploration probability after decay\n";
 
-		std::cin >> xSizeInput >> ySizeInput >> episodesInput >> learningRate >> discount >> decayEpisodesInput >> minRandomActionProbability;
+			int xSizeInput, ySizeInput, episodesInput, decayEpisodesInput;
 
-		std::cout << '\n';
+			std::cin >> xSizeInput >> ySizeInput >> episodesInput >> learningRate >> discount >> decayEpisodesInput >> minRandomActionProbability;
 
-		bool valid{true};
+			std::cout << '\n';
 
-		if (xSizeInput < 2) {
-			std::cout << "x size must be > 1\n";
-			valid = false;
+			bool valid{true};
+
+			if (xSizeInput < 2) {
+				std::cout << "x size must be > 1\n";
+				valid = false;
+			}
+			if (ySizeInput < 2) {
+				std::cout << "y size must be > 1\n";
+				valid = false;
+			}
+			if (episodesInput < 1) {
+				std::cout << "total episodes must be > 0\n";
+				valid = false;
+			}
+			if (learningRate <= .0f) {
+				std::cout << "learning rate must be > 0\n";
+				valid = false;
+			}
+			if (discount < .0f || discount > 1.f) {
+				std::cout << "discount factor must be between 0 and 1\n";
+				valid = false;
+			}
+			if (decayEpisodesInput < 0) {
+				std::cout << "number of episodes with decay of exploration probability be >= 0\n";
+				valid = false;
+			}
+			if (minRandomActionProbability < .0f || minRandomActionProbability > 1.f) {
+				std::cout << "exploration probability after decay must be between 0 and 1\n";
+				valid = false;
+			}
+			if (std::cin.fail()) {
+				std::cout << xSizeInput;
+				std::cout << "use valid numbers\n";
+				std::cin.clear();
+				std::cin.ignore();
+				valid = false;
+			}
+
+			if (valid) {
+				xSize = xSizeInput;
+				ySize = ySizeInput;
+				episodes = episodesInput;
+				decayEpisodes = decayEpisodesInput;
+				break;
+			};
+
+			std::cout << '\n';
 		}
-		if (ySizeInput < 2) {
-			std::cout << "y size must be > 1\n";
-			valid = false;
-		}
-		if (episodesInput < 1) {
-			std::cout << "total episodes must be > 0\n";
-			valid = false;
-		}
-		if (learningRate <= .0f) {
-			std::cout << "learning rate must be > 0\n";
-			valid = false;
-		}
-		if (discount < .0f || discount > 1.f) {
-			std::cout << "discount factor must be between 0 and 1\n";
-			valid = false;
-		}
-		if (decayEpisodesInput < 0) {
-			std::cout << "number of episodes with decay of exploration probability be >= 0\n";
-			valid = false;
-		}
-		if (minRandomActionProbability < .0f || minRandomActionProbability > 1.f) {
-			std::cout << "exploration probability after decay must be between 0 and 1\n";
-			valid = false;
-		}
-		if (std::cin.fail()){
-			std::cout << xSizeInput;
-			std::cout << "use valid numbers\n";
-			std::cin.clear();
-			std::cin.ignore();
-			valid = false;
-		}
 
-		if (valid) {
-			xSize = xSizeInput;
-			ySize = ySizeInput;
-			episodes = episodesInput;
-			decayEpisodes = decayEpisodesInput;
-			break;
-		};
+		//initialize variables
+		maxX = xSize - 1;
+		statesNum = xSize * ySize;
+		goal = statesNum - 1;
+		values.resize(statesNum, .0f);
 
-		std::cout << '\n';
-	}
+		//1st episode
+		std::cout << "1 ";
+		executeEpisode(randomFirstStep, randomCommonStep);
 
-	//initialize variables
-	maxX = xSize - 1;
-	statesNum = xSize * ySize;
-	goal = statesNum - 1;
-	values.resize(statesNum, .0f);
+		const float decayUpdateFactor{pow(minRandomActionProbability, 1.f / decayEpisodes)};
+		randomActionProbability = decayUpdateFactor;
 
-	//1st episode
-	std::cout << "1 ";
-	executeEpisode(randomFirstStep, randomCommonStep);
-
-	const float decayUpdateFactor{pow(minRandomActionProbability, 1.f / decayEpisodes)};
-	randomActionProbability = decayUpdateFactor;
-
-	//2nd episode. why separate: don't need to update random action probability in 2nd episode
-	std::cout << "2 ";
-	executeNonFirstEpisode();
-
-	const fastUint firstNonDecayEpisode{decayEpisodes + 1};
-
-	//episodes with random action probability decay
-	for (fastUint episode{3}; episode < firstNonDecayEpisode; ++episode) {
-		randomActionProbability *= decayUpdateFactor;
-		std::cout << episode << ' ';
-
+		//2nd episode. why separate: don't need to update random action probability in 2nd episode
+		std::cout << "2 ";
 		executeNonFirstEpisode();
-	}
 
-	//episodes without random action probability decay
-	for (fastUint episode{firstNonDecayEpisode}; episode < episodes + 1; ++episode) {
-		std::cout << episode << ' ';
+		const fastUint firstNonDecayEpisode{decayEpisodes + 1};
 
-		executeNonFirstEpisode();
-	}
+		//episodes with random action probability decay
+		for (fastUint episode{3}; episode < firstNonDecayEpisode; ++episode) {
+			randomActionProbability *= decayUpdateFactor;
+			std::cout << episode << ' ';
 
-	//print values
-	fastUint state{0};
-	for (fastUint y{0}; y < ySize; ++y) {
-		for (fastUint x{0}; x < xSize; ++x) {
-			std::cout << std::setw(8) << values[state] << '|';
-			++state;
+			executeNonFirstEpisode();
 		}
-		std::cout << '\n';
-	}
+
+		//episodes without random action probability decay
+		for (fastUint episode{firstNonDecayEpisode}; episode < episodes + 1; ++episode) {
+			std::cout << episode << ' ';
+
+			executeNonFirstEpisode();
+		}
+
+		//print values
+		fastUint state{0};
+		for (fastUint y{0}; y < ySize; ++y) {
+			for (fastUint x{0}; x < xSize; ++x) {
+				std::cout << std::setw(8) << values[state] << '|';
+				++state;
+			}
+			std::cout << '\n';
+		}
+
+		std::cout << "press 'enter' to run program again\n";
+		std::cin.ignore();
+		if (std::cin.get() != '\n') break;
+	} while (true);
 }
